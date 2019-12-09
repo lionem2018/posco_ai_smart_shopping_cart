@@ -12,9 +12,10 @@
 #include <time.h>
 //#include <WinSock2.h>
 
-# define	FILE_PATH		"C:/Users/PIRL/source/repos/AzureKinect/AzureKinect"
-# define	MIN_BOX_WIDTH	80
-# define	VALID_RANGE		25
+# define	FILE_PATH			"C:/Users/PIRL/source/repos/AzureKinect/AzureKinect"
+# define	MIN_BOX_WIDTH		80
+# define	VALID_RANGE			25
+# define	REGISTER_FRAME_NUM	20
 
 /*------ Base64 Encoding Table ------*/
 static const char MimeBase64[] = {
@@ -55,7 +56,7 @@ void kinect::initialize()
 	initialize_body_tracking();
 
 	// 이미지 경로 및 좌표 데이터 저장
-	out.open("./bboxes.txt", ios::ate);
+	//out.open("./bboxes.txt", ios::ate);
 }
 
 // Initialize Sensor
@@ -272,7 +273,7 @@ inline void kinect::update_skeleton(int& pre_people_num, int* candidate_list, fl
 
 		float distance_rate = distance_hip * distance_center;
 
-		printf_s("id %d: xyz(%f, %f, %f) / distance_rate = %f / distance_hip = %f / distance_z = %f\n", frame.get_body(i).id, skeleton.joints[0].position.xyz.x, skeleton.joints[0].position.xyz.y, skeleton.joints[0].position.xyz.z, distance_rate, distance_neck_pelnis, distance_center);
+		printf_s("id %d: xyz(%f, %f, %f) / distance_rate = %f / distance_hip = %f / distance_z = %f\n", frame.get_body(i).id, skeleton.joints[0].position.xyz.x, skeleton.joints[0].position.xyz.y, skeleton.joints[0].position.xyz.z, distance_rate, distance_neck_pelnis, joint_pelvis.position.xyz.z);
 		printf_s("angle: %d\n", (int)(atan2(joint_pelvis.position.xyz.z, joint_pelvis.position.xyz.x) / 3.141592 * 180));
 		bodies.emplace_back(frame.get_body(i));
 
@@ -283,14 +284,22 @@ inline void kinect::update_skeleton(int& pre_people_num, int* candidate_list, fl
 	// 등록된 유저 정보가 없음 => 0번째 사람이 유저로 인식
 	if (user_distance == 0 && distance_list[0] != 0.0)
 	{
-		user_distance = distance_list[0];
-		printf_s("save user information: %f\n", distance_list[0]);
+		static float average_distance = 0;
+		static int count = 0;
+		average_distance += distance_list[0];
+		count++;
+
+		if (count >= REGISTER_FRAME_NUM)
+		{
+			user_distance = average_distance / count;
+			printf_s("******************* save user information: %f ********************\n", user_distance);
+		}
 	}
 	
 	// 이전 프레임과 비교하여 사람 수가 변했다면 유저 후보 추적
 	if (pre_people_num != num_bodies)
 	{
-		printf_s("change people number!\n");
+		printf_s("Change people number!!!\n");
 		pre_people_num = num_bodies;
 	}
 
@@ -352,6 +361,7 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 
 	string pointsStringData("");
 	string anglesStringData("");
+	string distancesStringData("");
 	int candidate_num = 0;
 
 	// Visualize Skeleton
@@ -384,6 +394,8 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 		k4a_float2_t position_knee_right;
 		const bool result_knee_right = calibration.convert_3d_to_2d(joint_knee_right.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_knee_right);
 
+		k4abt_joint_t joint_ankle_left = body.skeleton.joints[20];
+		k4abt_joint_t joint_ankle_right = body.skeleton.joints[24];
 
 		//float distance = sqrt(pow());
 		int width = sqrt(pow(position_shoulder_right.xy.x - position_shoulder_left.xy.x, 2));
@@ -409,6 +421,7 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 			{
 				pointsStringData += ",";
 				anglesStringData += ",";
+				distancesStringData += ",";
 			}
 
 			// bounding box 위치 string 형태로 저장
@@ -418,6 +431,10 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 			// 카메라 중심으로 각도 계산 및 string 형태로 저장
 			int angle = (int)(atan2(joint_pelvis.position.xyz.z, joint_pelvis.position.xyz.x) / 3.141592 * 180);
 			anglesStringData += "[" + to_string(angle) + "]";
+
+			//int distance = (joint_ankle_left.position.xyz.z + joint_ankle_right.position.xyz.z) / 2;
+			int distance = joint_pelvis.position.xyz.z;
+			distancesStringData += "[" + to_string(distance) + "]";
 
 			// 경계박스 이미지에 그리기
 			//cv::rectangle(color, point_rect_left_top, point_rect_right_low, colors[(body.id - 1) % colors.size()]);
@@ -519,8 +536,10 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 			char char_candidate_num[5] = { 0 };
 			char char_candidate_point_data_len[5] = { 0 };
 			char char_candidate_angle_data_len[5] = { 0 };
+			char char_candidate_distance_data_len[5] = { 0 };
 			char* char_candidate_point_data = &pointsStringData[0];
 			char* char_candidate_angle_data = &anglesStringData[0];
+			char* char_candidate_distance_data = &distancesStringData[0];
 
 			sprintf_s(char_candidate_num, "%d", candidate_num);
 			for (int i = strlen(char_candidate_num); i < 5; i++)
@@ -535,11 +554,17 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 			for (int i = strlen(char_candidate_angle_data_len); i < 5; i++)
 				char_candidate_angle_data_len[i] = ' ';
 
+			sprintf_s(char_candidate_distance_data_len, "%d", distancesStringData.length());
+			for (int i = strlen(char_candidate_distance_data_len); i < 5; i++)
+				char_candidate_distance_data_len[i] = ' ';
+
 			send(socket, char_candidate_num, 5, 0);
 			send(socket, char_candidate_point_data_len, 5, 0);
 			send(socket, char_candidate_point_data, pointsStringData.length(), 0);
 			send(socket, char_candidate_angle_data_len, 5, 0);
 			send(socket, char_candidate_angle_data, anglesStringData.length(), 0);
+			send(socket, char_candidate_distance_data_len, 5, 0);
+			send(socket, char_candidate_distance_data, distancesStringData.length(), 0);
 
 			end = clock();
 
@@ -561,7 +586,7 @@ bool kinect::isCandidate(int* candidate_list, int body_id)
 {
 	for (int i = 0; candidate_list[i] != -1; i++)
 	{
-		printf_s("%d====%d\n", body_id, candidate_list[i]);
+		printf_s("%d == %d\n", body_id, candidate_list[i]);
 		if (body_id == candidate_list[i])
 			return true;
 	}

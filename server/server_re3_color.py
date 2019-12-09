@@ -27,10 +27,13 @@ isVerified = False
 initialize = False
 frameNum = 0
 outputBoxToDraw = None
-
+state_no_user = False
 user_hsv_values = []
+
 cluster_num = 3
 threshold = 150
+check_user_frame_num = 20
+find_user_frame_num = 10
 
 enclosure_queue = Queue()
 
@@ -56,6 +59,8 @@ enclosure_queue = Queue()
 #     boxToDraw[[1,3]] = np.sort(boxToDraw[[1,3]])
 
 
+
+
 def track_in_image(img, mirror=False):
     global tracker, initialize, boxToDraw, outputBoxToDraw
 
@@ -76,11 +81,11 @@ def track_in_image(img, mirror=False):
                       (int(outputBoxToDraw[0]), int(outputBoxToDraw[1])),
                       (int(outputBoxToDraw[2]), int(outputBoxToDraw[3])),
                       [0, 0, 255], PADDING)
-    cv2.imshow('Webcam', img)
+    # cv2.imshow('Webcam', img)
 
 
 def check_user(img, candidate_num, point_list):
-    global boxToDraw
+    global boxToDraw, state_no_user
 
     user_id = -1
     user_bbox_left_top = np.zeros(2)
@@ -113,23 +118,23 @@ def check_user(img, candidate_num, point_list):
         sorted_idx = np.argsort(sorted_hist)[::-1]
         # bar = color_utils.plot_colors(sorted_hist, clt.cluster_centers_)
 
-        print(hist)
-        print(sorted_hist)
+        # print(hist)
+        # print(sorted_hist)
         # color = clt.cluster_centers_.astype('uint8')
         # color = np.array(clt.cluster_centers_, dtype=np.uint8)
 
         # colors 추출하여 hist의 값이 큰 순서로 colors 순서 바꾸기
         colors = clt.cluster_centers_.astype('uint8')
         sorted_colors = [colors[i] for i in sorted_idx]
-        print(colors)
-        print(sorted_colors)
+        # print(colors)
+        # print(sorted_colors)
 
         error_sum = 0
         # convert rgb color value to hsv
         for color_index, color in enumerate(sorted_colors):
             h_error = s_error = v_error = 0
             color = color_utils.rgb_to_hsv(color[0], color[1], color[2])
-            print(color_index, ":", color)
+            # print(color_index, ":", color)
 
             # 유저 컬러 등록
             if len(user_hsv_values) < cluster_num:
@@ -139,17 +144,17 @@ def check_user(img, candidate_num, point_list):
             if user_hsv_values[color_index][0] > color[0]:
                 if abs(user_hsv_values[color_index][0] - color[0]) < (360 - user_hsv_values[color_index][0] + color[0]):
                     h_error = user_hsv_values[color_index][0] - color[0]
-                    print("h error:", abs(user_hsv_values[color_index][0] - color[0]))
+                    # print("h error:", abs(user_hsv_values[color_index][0] - color[0]))
                 else:
                     h_error = 360 - user_hsv_values[color_index][0] + color[0]
-                    print("h error:", 360 - user_hsv_values[color_index][0] + color[0])
+                    # print("h error:", 360 - user_hsv_values[color_index][0] + color[0])
             else:
                 if abs(user_hsv_values[color_index][0] - color[0]) < (360 - color[0] + user_hsv_values[color_index][0]):
                     h_error = user_hsv_values[color_index][0] - color[0]
-                    print("h error:", abs(user_hsv_values[color_index][0] - color[0]))
+                    # print("h error:", abs(user_hsv_values[color_index][0] - color[0]))
                 else:
                     h_error = 360 - color[0] + user_hsv_values[color_index][0]
-                    print("h error:", 360 - color[0] + user_hsv_values[color_index][0])
+                    # print("h error:", 360 - color[0] + user_hsv_values[color_index][0])
 
             s_error += user_hsv_values[color_index][1] - color[1]
             v_error += user_hsv_values[color_index][2] - color[2]
@@ -164,7 +169,7 @@ def check_user(img, candidate_num, point_list):
 
             # 컬러별 그룹값 추출
             color_range = color_utils.hsv_to_color_range(color[0], color[1], color[2])
-            print(color_range)
+            # print(color_range)
 
         print("error_sum:", error_sum)
 
@@ -184,20 +189,22 @@ def check_user(img, candidate_num, point_list):
     print("User:", user_id)
 
     # 사용자 컬러 정보 가중치 부여 저장 부분(확인필요)
-    if user_id != -1:
-        for idx in range(cluster_num):
-            user_hsv_values[idx][0] = user_hsv_values[idx][0] * 0.8 + pre_colors[idx][0] * 0.2
-            user_hsv_values[idx][1] = user_hsv_values[idx][1] * 0.8 + pre_colors[idx][1] * 0.2
-            user_hsv_values[idx][2] = user_hsv_values[idx][2] * 0.8 + pre_colors[idx][2] * 0.2
-        print("update hsv: ", user_hsv_values)
+    # if user_id != -1:
+    #     for idx in range(cluster_num):
+    #         user_hsv_values[idx][0] = user_hsv_values[idx][0] * 0.8 + pre_colors[idx][0] * 0.2
+    #         user_hsv_values[idx][1] = user_hsv_values[idx][1] * 0.8 + pre_colors[idx][1] * 0.2
+    #         user_hsv_values[idx][2] = user_hsv_values[idx][2] * 0.8 + pre_colors[idx][2] * 0.2
+    #     print("update hsv: ", user_hsv_values)
 
     # 사용자의 위치 bbox 정보 수정
-    # 사용자를 못찾으면????
+    # 사용자를 못찾으면 no user 상태로 변경하여 verifier가 더 자주 동작하도록 함
     if abs(user_bbox_left_top[0] - user_bbox_right_low[0]) > 0 and abs(user_bbox_left_top[1] - user_bbox_right_low[1]) > 0:
         boxToDraw[[0, 2]] = np.sort([user_bbox_left_top[0], user_bbox_right_low[0]])
         boxToDraw[[1, 3]] = np.sort([user_bbox_left_top[1], user_bbox_right_low[1]])
+        state_no_user = False
     else:
-        print("**************Couldn't find user!!*************")
+        print("************* WARNING: Couldn't find user!! *************")
+        state_no_user = True
 
 
 def recvall(sock, count):
@@ -211,72 +218,72 @@ def recvall(sock, count):
     return buf
 
 
-# 쓰레드 함수(main으로 빼둠)
-def threaded(client_socket, addr, queue):
-    global frameNum, isVerified, boxToDraw
-    recv = client_socket.recv(1024)
-    print(recv)
-    client_socket.send('ACK'.encode())
-
-    cv2.namedWindow('Webcam', cv2.WINDOW_NORMAL)
-    cv2.resizeWindow('Webcam', OUTPUT_WIDTH, OUTPUT_HEIGHT)
-    # cv2.setMouseCallback('Webcam', on_mouse, 0)
-
-    while True:
-        start = time.time()
-        # length = recvall(client_socket, 16)
-        # stringData = recvall(client_socket, int(length))
-        stringData = recvall(client_socket, 691200)
-        # stringData = recvall(client_socket, 93600)
-
-        candidate_num = recvall(client_socket, 5)
-        candidate_num = int(candidate_num)
-        point_data_len = recvall(client_socket, 5)
-        point_data_len = int(point_data_len)
-        stringPointData = recvall(client_socket, point_data_len)
-        angle_data_len = recvall(client_socket, 5)
-        angle_data_len = int(angle_data_len)
-        stringAngleData = recvall(client_socket, angle_data_len)
-
-        print("candidate_num: ", candidate_num)
-
-        data = np.frombuffer(stringData, dtype='uint8')
-        decimg = data.reshape(360, 640, 3)
-        # decimg = data.reshape(120, 260, 3)
-
-        # print(stringPointData)
-        point_list = ''
-        if point_data_len > 0:
-            point_list = list(ast.literal_eval(stringPointData.decode('utf-8')))
-        print("point_list: ", point_list)
-
-        # print(stringAngleData)
-        angle_list = ''
-        if angle_data_len > 0:
-            angle_list = list(ast.literal_eval(stringAngleData.decode('utf-8')))
-        print("angle_list: ", angle_list)
-
-        if frameNum % 20 == 0:
-            check_user(decimg, candidate_num, point_list)
-            isVerified = True
-        else:
-            track_in_image(decimg)
-            isVerified = False
-
-        # print(int(length))
-        # queue.put(stringData)
-
-        key = cv2.waitKey(1)
-        if key == 27:
-            break
-
-        frameNum += 1
-
-        print("[", frameNum, "], time:", time.time()-start)
-
-# client_socket.send('ACK'.encode())
-
-    client_socket.close()
+# # 쓰레드 함수(main으로 빼둠)
+# def threaded(client_socket, addr, queue):
+#     global frameNum, isVerified, boxToDraw
+#     recv = client_socket.recv(1024)
+#     print(recv)
+#     client_socket.send('ACK'.encode())
+#
+#     cv2.namedWindow('Webcam', cv2.WINDOW_NORMAL)
+#     cv2.resizeWindow('Webcam', OUTPUT_WIDTH, OUTPUT_HEIGHT)
+#     # cv2.setMouseCallback('Webcam', on_mouse, 0)
+#
+#     while True:
+#         start = time.time()
+#         # length = recvall(client_socket, 16)
+#         # stringData = recvall(client_socket, int(length))
+#         stringData = recvall(client_socket, 691200)
+#         # stringData = recvall(client_socket, 93600)
+#
+#         candidate_num = recvall(client_socket, 5)
+#         candidate_num = int(candidate_num)
+#         point_data_len = recvall(client_socket, 5)
+#         point_data_len = int(point_data_len)
+#         stringPointData = recvall(client_socket, point_data_len)
+#         angle_data_len = recvall(client_socket, 5)
+#         angle_data_len = int(angle_data_len)
+#         stringAngleData = recvall(client_socket, angle_data_len)
+#
+#         print("candidate_num: ", candidate_num)
+#
+#         data = np.frombuffer(stringData, dtype='uint8')
+#         decimg = data.reshape(360, 640, 3)
+#         # decimg = data.reshape(120, 260, 3)
+#
+#         # print(stringPointData)
+#         point_list = ''
+#         if point_data_len > 0:
+#             point_list = list(ast.literal_eval(stringPointData.decode('utf-8')))
+#         print("point_list: ", point_list)
+#
+#         # print(stringAngleData)
+#         angle_list = ''
+#         if angle_data_len > 0:
+#             angle_list = list(ast.literal_eval(stringAngleData.decode('utf-8')))
+#         print("angle_list: ", angle_list)
+#
+#         if frameNum % 20 == 0:
+#             check_user(decimg, candidate_num, point_list)
+#             isVerified = True
+#         else:
+#             track_in_image(decimg)
+#             isVerified = False
+#
+#         # print(int(length))
+#         # queue.put(stringData)
+#
+#         key = cv2.waitKey(1)
+#         if key == 27:
+#             break
+#
+#         frameNum += 1
+#
+#         print("[", frameNum, "], time:", time.time()-start)
+#
+# # client_socket.send('ACK'.encode())
+#
+#     client_socket.close()
 
 
 HOST = '141.223.140.54'
@@ -314,11 +321,15 @@ if __name__ == '__main__':
         #
         while True:
             start = time.time()
+
+            # client로 부터 데이터 받아오기
             # length = recvall(client_socket, 16)
             # stringData = recvall(client_socket, int(length))
+            # 이미지 데이터 받아오기
             stringData = recvall(client_socket, 691200)
             # stringData = recvall(client_socket, 93600)
 
+            # 유저 후보 수, 유저 후보 위치, 유저 후보 각도 정보 받아오기
             candidate_num = recvall(client_socket, 5)
             candidate_num = int(candidate_num)
             point_data_len = recvall(client_socket, 5)
@@ -327,13 +338,18 @@ if __name__ == '__main__':
             angle_data_len = recvall(client_socket, 5)
             angle_data_len = int(angle_data_len)
             stringAngleData = recvall(client_socket, angle_data_len)
+            distance_data_len = recvall(client_socket, 5)
+            distance_data_len = int(distance_data_len)
+            stringDistanceData = recvall(client_socket, distance_data_len)
 
             print("candidate_num: ", candidate_num)
 
+            # 1차원 형태의 이미지 데이터 3차원으로 형태 변환
             data = np.frombuffer(stringData, dtype='uint8')
             decimg = data.reshape(360, 640, 3)
             # decimg = data.reshape(120, 260, 3)
 
+            # bytes 형태의 point list 정보를 list로 변환
             # print(stringPointData)
             point_list = ''
             if point_data_len > 0:
@@ -348,18 +364,43 @@ if __name__ == '__main__':
 
             print("point_list: ", point_list)
 
+            # bytes 형태의 angle list 정보를 list로 변환
             # print(stringAngleData)
             angle_list = ''
             if angle_data_len > 0:
                 angle_list = list(ast.literal_eval(stringAngleData.decode('utf-8')))
             print("angle_list: ", angle_list)
 
-            if frameNum % 20 == 0:
-                check_user(decimg, candidate_num, point_list)
-                isVerified = True
+            # bytes 형태의 distance list 정보를 list로 변환
+            # print(stringDistanceData)
+            distance_list = ''
+            if distance_data_len > 0:
+                distance_list = list(ast.literal_eval(stringDistanceData.decode('utf-8')))
+            print("distance_list: ", distance_list)
+
+            # # 20 프레임마다 verifier 작동(color 확인)
+            # if frameNum % 20 == 0:
+            #     check_user(decimg, candidate_num, point_list)
+            #     isVerified = True
+            # else:
+            #     if not state_no_user:
+            #         track_in_image(decimg)
+            #         isVerified = False
+
+            if not state_no_user:
+                if frameNum % check_user_frame_num == 0:
+                    check_user(decimg, candidate_num, point_list)
+                    isVerified = True
+                else:
+                    track_in_image(decimg)
+                    isVerified = False
             else:
-                track_in_image(decimg)
-                isVerified = False
+                if frameNum % find_user_frame_num == 0:
+                    check_user(decimg, candidate_num, point_list)
+                    if not state_no_user:
+                        isVerified = True
+
+            cv2.imshow('Webcam', decimg)
 
             # print(int(length))
             # queue.put(stringData)

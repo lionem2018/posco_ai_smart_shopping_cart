@@ -1,13 +1,11 @@
 import socket
 import cv2
 import numpy as np
-from sklearn.cluster import KMeans
-import matplotlib.pyplot as plt
-import color_utils
 from queue import Queue
 from _thread import *
-import time, glob
-import argparse
+import time
+from sklearn.cluster import KMeans
+import color_utils
 import os, sys, ast
 
 basedir = os.path.dirname(__file__)
@@ -21,6 +19,20 @@ from constants import PADDING
 np.set_printoptions(precision=6)
 np.set_printoptions(suppress=True)
 
+# 색상 클러스터 군집 개수
+CLUSTER_NUM = 4
+# 유저 색상 판단 임계값
+COLOR_THRESHOLD = 200
+# 유저를 성공적으로 인식했을 때 verifier가 동작할 프레임 간격
+CHECK_USER_FRAME_NUM = 20
+# 유저를 인식하지 못했을 때 verifier가 동작할 프레임 간격
+FIND_USER_FRAME_NUM = 10
+
+CMD_STOP = "S,0;S,0;S,0;S,0;N"
+
+HOST = '141.223.140.54'
+PORT = 8888
+
 drawnBox = np.zeros(4)
 boxToDraw = np.zeros(4)
 isVerified = False
@@ -28,37 +40,100 @@ initialize = False
 frameNum = 0
 outputBoxToDraw = None
 state_no_user = False
-user_hsv_values = []
 
-cluster_num = 3
-threshold = 150
-check_user_frame_num = 20
-find_user_frame_num = 10
+# 유저의 컬러 값 저장 리스트
+user_hsv_values = []
+# verifier가 판단한 유저의 아이디
+user_id = -1
 
 enclosure_queue = Queue()
 
 
-# def on_mouse(event, x, y, flags, params):
-#     global mousedown, mouseupdown, drawnBox, boxToDraw, initialize
-#     if event == cv2.EVENT_LBUTTONDOWN:
-#         drawnBox[[0,2]] = x
-#         drawnBox[[1,3]] = y
-#         mousedown = True
-#         mouseupdown = False
-#     elif mousedown and event == cv2.EVENT_MOUSEMOVE:
-#         drawnBox[2] = x
-#         drawnBox[3] = y
-#     elif event == cv2.EVENT_LBUTTONUP:
-#         drawnBox[2] = x
-#         drawnBox[3] = y
-#         mousedown = False
-#         mouseupdown = True
-#         initialize = True
-#     boxToDraw = drawnBox.copy()
-#     boxToDraw[[0,2]] = np.sort(boxToDraw[[0,2]])
-#     boxToDraw[[1,3]] = np.sort(boxToDraw[[1,3]])
+def recvall(sock, count):
+    buf = b''
+    while count:
+        newbuf = sock.recv(count)
+        if not newbuf: return None
+        buf += newbuf
+        count -= len(newbuf)
+    return buf
 
 
+def communication_cart(client_socket, queue):
+    cmd = CMD_STOP
+    print('comm cart start!')
+    client_socket.send(cmd.encode())
+    while True:
+        recv_packet = client_socket.recv(1024).decode()
+        print(recv_packet)
+        queue_cmd = queue.get()
+        cmd = queue_cmd
+
+        if queue_cmd == '':
+            client_socket.send(CMD_STOP.encode())
+        else:
+            client_socket.send(cmd.encode())
+
+    client_socket.close()
+
+
+def test_cart_input(queue):
+    cmd = CMD_STOP
+    print('comm cart start!')
+    while True:
+        queue_cmd = queue.get()
+        cmd = queue_cmd
+
+        if queue_cmd == '':
+            print(CMD_STOP)
+        else:
+            print(cmd)
+
+
+def manual_control_cart(queue):
+    while True:
+        keyboard_input = input("\r\n>> ")
+        # speed ratio check motor1,2(100=80rpm) <--> motor3,4(100=130rpm)
+        if keyboard_input == 'CO':  # check OK
+            queue.put('S,0;S,0;S,0;S,0;G')
+        elif keyboard_input == 'CE':  # check Error
+            queue.put('S,0;S,0;S,0;S,0;B')
+        elif keyboard_input == 'E':  # just for test(maybe do not use), ultrasonic sensor will turn on red light
+            queue.put('S,0;S,0;S,0;S,0;R')
+        elif keyboard_input == 'S':
+            queue.put('S,0;S,0;S,0;S,0;N')
+        elif keyboard_input == 'F':
+            queue.put('F,100;F,100;F,100;F,100;N')
+        elif keyboard_input == 'B':
+            queue.put('B,100;B,100;B,100;B,100;N')
+        elif keyboard_input == 'R1':
+            queue.put('F,100;F,100;F,80;F,100;N')
+        elif keyboard_input == 'R2':
+            queue.put('F,100;F,100;F,60;F,100;N')
+        elif keyboard_input == 'R3':
+            queue.put('F,100;F,100;F,40;F,100;N')
+        elif keyboard_input == 'R4':
+            queue.put('F,100;F,100;F,20;F,100;N')
+        elif keyboard_input == 'L1':
+            queue.put('F,100;F,100;F,100;F,80;N')
+        elif keyboard_input == 'L2':
+            queue.put('F,100;F,100;F,100;F,60;N')
+        elif keyboard_input == 'L3':
+            queue.put('F,100;F,100;F,100;F,40;N')
+        elif keyboard_input == 'L4':
+            queue.put('F,100;F,100;F,100;F,20;N')
+
+
+def wait_accept_socket(server_socket, queue):
+    while True:
+        client_socket, addr = server_socket.accept()
+        recv_packet = client_socket.recv(1024).decode()
+        print('connected client')
+
+        if recv_packet == '1;CART':
+            print('connected CART!!')
+            start_new_thread(communication_cart, (client_socket, queue,))
+            start_new_thread(manual_control_cart, (queue,))
 
 
 def track_in_image(img, mirror=False):
@@ -66,12 +141,7 @@ def track_in_image(img, mirror=False):
 
     if mirror:
         img = cv2.flip(img, 1)
-    # if mousedown:
-    #     cv2.rectangle(img,
-    #                   (int(boxToDraw[0]), int(boxToDraw[1])),
-    #                   (int(boxToDraw[2]), int(boxToDraw[3])),
-    #                   [0, 0, 255], PADDING)
-    # elif mouseupdown:
+
     if isVerified:
         outputBoxToDraw = tracker.track('webcam', img[:, :, ::-1], boxToDraw)
         initialize = False
@@ -81,11 +151,10 @@ def track_in_image(img, mirror=False):
                       (int(outputBoxToDraw[0]), int(outputBoxToDraw[1])),
                       (int(outputBoxToDraw[2]), int(outputBoxToDraw[3])),
                       [0, 0, 255], PADDING)
-    # cv2.imshow('Webcam', img)
 
 
 def check_user(img, candidate_num, point_list):
-    global boxToDraw, state_no_user
+    global boxToDraw, state_no_user, user_id
 
     user_id = -1
     user_bbox_left_top = np.zeros(2)
@@ -99,16 +168,10 @@ def check_user(img, candidate_num, point_list):
         cropped_image = img[point_left_top[1]:point_right_low[1], point_left_top[0]:point_right_low[0]]
         cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
 
-        # plt.figure()
-        # plt.axis("off")
-        # plt.imshow(cropped_image)
-
         # reshape the image to be a list of pixels
         cropped_image = cropped_image.reshape((cropped_image.shape[0] * cropped_image.shape[1], 3))
 
-        # cluster the pixel intensities
-        # clt = KMeans(n_clusters = args["clusters"])
-        clt = KMeans(n_clusters=cluster_num)
+        clt = KMeans(n_clusters=CLUSTER_NUM)
         clt.fit(cropped_image)
 
 
@@ -117,45 +180,32 @@ def check_user(img, candidate_num, point_list):
         hist = color_utils.centroid_histogram(clt)
         sorted_hist = np.sort(hist)[::-1]
         sorted_idx = np.argsort(sorted_hist)[::-1]
-        # bar = color_utils.plot_colors(sorted_hist, clt.cluster_centers_)
-
-        # print(hist)
-        # print(sorted_hist)
-        # color = clt.cluster_centers_.astype('uint8')
-        # color = np.array(clt.cluster_centers_, dtype=np.uint8)
 
         # colors 추출하여 hist의 값이 큰 순서로 colors 순서 바꾸기
         colors = clt.cluster_centers_.astype('uint8')
         sorted_colors = [colors[i] for i in sorted_idx]
-        # print(colors)
-        # print(sorted_colors)
 
         error_sum = 0
         # convert rgb color value to hsv
         for color_index, color in enumerate(sorted_colors):
             h_error = s_error = v_error = 0
             color = color_utils.rgb_to_hsv(color[0], color[1], color[2])
-            # print(color_index, ":", color)
 
             # 유저 컬러 등록
-            if len(user_hsv_values) < cluster_num:
+            if len(user_hsv_values) < CLUSTER_NUM:
                 user_hsv_values.append(color)
                 continue
 
             if user_hsv_values[color_index][0] > color[0]:
                 if abs(user_hsv_values[color_index][0] - color[0]) < (360 - user_hsv_values[color_index][0] + color[0]):
                     h_error = user_hsv_values[color_index][0] - color[0]
-                    # print("h error:", abs(user_hsv_values[color_index][0] - color[0]))
                 else:
                     h_error = 360 - user_hsv_values[color_index][0] + color[0]
-                    # print("h error:", 360 - user_hsv_values[color_index][0] + color[0])
             else:
                 if abs(user_hsv_values[color_index][0] - color[0]) < (360 - color[0] + user_hsv_values[color_index][0]):
                     h_error = user_hsv_values[color_index][0] - color[0]
-                    # print("h error:", abs(user_hsv_values[color_index][0] - color[0]))
                 else:
                     h_error = 360 - color[0] + user_hsv_values[color_index][0]
-                    # print("h error:", 360 - color[0] + user_hsv_values[color_index][0])
 
             s_error += user_hsv_values[color_index][1] - color[1]
             v_error += user_hsv_values[color_index][2] - color[2]
@@ -170,22 +220,15 @@ def check_user(img, candidate_num, point_list):
 
             # 컬러별 그룹값 추출
             color_range = color_utils.hsv_to_color_range(color[0], color[1], color[2])
-            # print(color_range)
 
         print("error_sum:", error_sum)
 
-        if error_sum < threshold and error_sum < pre_error_sum:
+        if error_sum < COLOR_THRESHOLD and error_sum < pre_error_sum:
             user_id = person_num
             user_bbox_left_top = point_left_top
             user_bbox_right_low = point_right_low
             pre_error_sum = error_sum
             pre_colors = sorted_colors
-
-        # show our color bart
-        # plt.figure()
-        # plt.axis("off")
-        # plt.imshow(bar)
-        # plt.show()
 
     print("User:", user_id)
 
@@ -208,127 +251,45 @@ def check_user(img, candidate_num, point_list):
         state_no_user = True
 
 
-def recvall(sock, count):
-    buf = b''
-    while count:
-        newbuf = sock.recv(count)
-        if not newbuf: return None
-        buf += newbuf
-        count -= len(newbuf)
-
-    return buf
-
-
-# # 쓰레드 함수(main으로 빼둠)
-# def threaded(client_socket, addr, queue):
-#     global frameNum, isVerified, boxToDraw
-#     recv = client_socket.recv(1024)
-#     print(recv)
-#     client_socket.send('ACK'.encode())
-#
-#     cv2.namedWindow('Webcam', cv2.WINDOW_NORMAL)
-#     cv2.resizeWindow('Webcam', OUTPUT_WIDTH, OUTPUT_HEIGHT)
-#     # cv2.setMouseCallback('Webcam', on_mouse, 0)
-#
-#     while True:
-#         start = time.time()
-#         # length = recvall(client_socket, 16)
-#         # stringData = recvall(client_socket, int(length))
-#         stringData = recvall(client_socket, 691200)
-#         # stringData = recvall(client_socket, 93600)
-#
-#         candidate_num = recvall(client_socket, 5)
-#         candidate_num = int(candidate_num)
-#         point_data_len = recvall(client_socket, 5)
-#         point_data_len = int(point_data_len)
-#         stringPointData = recvall(client_socket, point_data_len)
-#         angle_data_len = recvall(client_socket, 5)
-#         angle_data_len = int(angle_data_len)
-#         stringAngleData = recvall(client_socket, angle_data_len)
-#
-#         print("candidate_num: ", candidate_num)
-#
-#         data = np.frombuffer(stringData, dtype='uint8')
-#         decimg = data.reshape(360, 640, 3)
-#         # decimg = data.reshape(120, 260, 3)
-#
-#         # print(stringPointData)
-#         point_list = ''
-#         if point_data_len > 0:
-#             point_list = list(ast.literal_eval(stringPointData.decode('utf-8')))
-#         print("point_list: ", point_list)
-#
-#         # print(stringAngleData)
-#         angle_list = ''
-#         if angle_data_len > 0:
-#             angle_list = list(ast.literal_eval(stringAngleData.decode('utf-8')))
-#         print("angle_list: ", angle_list)
-#
-#         if frameNum % 20 == 0:
-#             check_user(decimg, candidate_num, point_list)
-#             isVerified = True
-#         else:
-#             track_in_image(decimg)
-#             isVerified = False
-#
-#         # print(int(length))
-#         # queue.put(stringData)
-#
-#         key = cv2.waitKey(1)
-#         if key == 27:
-#             break
-#
-#         frameNum += 1
-#
-#         print("[", frameNum, "], time:", time.time()-start)
-#
-# # client_socket.send('ACK'.encode())
-#
-#     client_socket.close()
-
-
-HOST = '141.223.140.54'
-PORT = 8888
-
-# Main function
 if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='Show the Webcam demo.')
-    args = parser.parse_args()
-
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
     server_socket.listen()
 
     print('server start')
-    print('wait')
+    num_connected = 0
 
     tracker = re3_tracker.Re3Tracker()
 
-    client_socket, addr = server_socket.accept()
-    # start_new_thread(threaded, (client_socket, addr, enclosure_queue,))
-
-    # main loop
     while True:
-        recv = client_socket.recv(1024)
-        print(recv)
-        client_socket.send('ACK'.encode())
+        client_socket, addr = server_socket.accept()
+        recv_packet = client_socket.recv(1024).decode()
+        print(recv_packet)
+
+        if recv_packet == '1;CART':
+            # start_new_thread(communication_cart, (client_socket, enclosure_queue,))
+            # start_new_thread(manual_control_cart, (enclosure_queue,))
+            start_new_thread(test_cart_input, (enclosure_queue,))
+        elif recv_packet == '2;AZURE':
+            # start_new_thread(wait_accept_socket, (server_socket, enclosure_queue,))
+            start_new_thread(test_cart_input, (enclosure_queue,))
+            break
+
+    while True:
+        # 여기에 AZURE 수신 한 뒤 Re3 부분 추가
+        # 거리, 각도 값에 따라 모터 명령 코드를 추가
+        # 모터 명령을 enclosure_queue에 put 한다(manual_control_cart 함수 참고)
+        # pass
 
         cv2.namedWindow('Webcam', cv2.WINDOW_NORMAL)
         cv2.resizeWindow('Webcam', OUTPUT_WIDTH, OUTPUT_HEIGHT)
-        # cv2.setMouseCallback('Webcam', on_mouse, 0)
 
-        #
         while True:
             start = time.time()
 
-            # client로 부터 데이터 받아오기
-            # length = recvall(client_socket, 16)
-            # stringData = recvall(client_socket, int(length))
             # 이미지 데이터 받아오기
             stringData = recvall(client_socket, 691200)
-            # stringData = recvall(client_socket, 93600)
 
             # 유저 후보 수, 유저 후보 위치, 유저 후보 각도 정보 받아오기
             candidate_num = recvall(client_socket, 5)
@@ -348,10 +309,8 @@ if __name__ == '__main__':
             # 1차원 형태의 이미지 데이터 3차원으로 형태 변환
             data = np.frombuffer(stringData, dtype='uint8')
             decimg = data.reshape(360, 640, 3)
-            # decimg = data.reshape(120, 260, 3)
 
             # bytes 형태의 point list 정보를 list로 변환
-            # print(stringPointData)
             point_list = ''
             if point_data_len > 0:
                 point_list = list(ast.literal_eval(stringPointData.decode('utf-8')))
@@ -366,14 +325,12 @@ if __name__ == '__main__':
             print("point_list: ", point_list)
 
             # bytes 형태의 angle list 정보를 list로 변환
-            # print(stringAngleData)
             angle_list = ''
             if angle_data_len > 0:
                 angle_list = list(ast.literal_eval(stringAngleData.decode('utf-8')))
             print("angle_list: ", angle_list)
 
             # bytes 형태의 distance list 정보를 list로 변환
-            # print(stringDistanceData)
             distance_list = ''
             if distance_data_len > 0:
                 distance_list = list(ast.literal_eval(stringDistanceData.decode('utf-8')))
@@ -389,22 +346,59 @@ if __name__ == '__main__':
             #         isVerified = False
 
             if not state_no_user:
-                if frameNum % check_user_frame_num == 0:
+                if frameNum % CHECK_USER_FRAME_NUM == 0:
                     check_user(decimg, candidate_num, point_list)
                     isVerified = True
                 else:
                     track_in_image(decimg)
                     isVerified = False
             else:
-                if frameNum % find_user_frame_num == 0:
+                if frameNum % FIND_USER_FRAME_NUM == 0:
                     check_user(decimg, candidate_num, point_list)
                     if not state_no_user:
                         isVerified = True
 
-            cv2.imshow('Webcam', decimg)
+            # 유저가 존재하고, verifier가 동작한 후라면 유저 정보가 있으므로 모터 조정 가능
+            if (not state_no_user) and isVerified:
+                # 키넥트 기준 계산한 각도와 거리 정보
+                difference_angle = angle_list[user_id] - 90
+                user_distance = distance_list[user_id]
+                # 유저와의 거리가 100이하라면
+                if user_distance < 1000:
+                    # 멈춤(거리유지 위해)
+                    # pass
+                    enclosure_queue.put('S,0;S,0;S,0;S,0;G')
+                # 각도가 -10 이하라면
+                elif difference_angle < -10:
+                    # 우회전(각도별로 나눠야)
+                    # pass
+                    # enclosure_queue.put('F,100;F,100;F,40;F,100;N')
 
-            # print(int(length))
-            # queue.put(stringData)
+                    if difference_angle < -20:
+                        enclosure_queue.put('F,100;F,100;F,20;F,100;N')
+                    else:
+                        enclosure_queue.put('F,100;F,100;F,60;F,100;N')
+                # 각도가 10도 이상이라면
+                elif difference_angle > 10:
+                    # 좌회전(각도별로 나눠야)
+                    # pass
+                    # enclosure_queue.put('F,100;F,100;F,100;F,40;N')
+
+                    if difference_angle > 20:
+                        enclosure_queue.put('F,100;F,100;F,100;F,20;N')
+                    else:
+                        enclosure_queue.put('F,100;F,100;F,100;F,60;N')
+                # 그 외 상황에 대해서는 직진
+                else:
+                    # 직진
+                    # pass
+                    enclosure_queue.put('F,100;F,100;F,100;F,100;N')
+            # 만일 유저를 찾지 못했다면(간섭)
+            elif state_no_user:
+                # 멈춤(간섭상황)
+                enclosure_queue.put('S,0;S,0;S,0;S,0;R')
+
+            cv2.imshow('Webcam', decimg)
 
             key = cv2.waitKey(1)
             if key == 27:
@@ -413,6 +407,4 @@ if __name__ == '__main__':
             frameNum += 1
 
             print("[", frameNum, "], time:", time.time() - start, "===========================")
-
-
 

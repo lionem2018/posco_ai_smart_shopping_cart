@@ -38,10 +38,6 @@ int main(int argc, char* argv[])
 
 	hSocket = socket(PF_INET, SOCK_STREAM, 0);
 
-	// 네이글 알고리즘 off
-	BOOL opt = TRUE;
-	setsockopt(hSocket, IPPROTO_TCP, TCP_NODELAY, (const char*)&opt, sizeof(opt));
-
 	if (hSocket == INVALID_SOCKET)
 		printf("error2");
 
@@ -57,8 +53,6 @@ int main(int argc, char* argv[])
 	catch (const k4a::error & error) {
 		
 	}
-
-	 
 
 	try {
 		kinect kinect;

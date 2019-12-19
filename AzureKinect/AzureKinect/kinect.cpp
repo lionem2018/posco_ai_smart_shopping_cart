@@ -246,34 +246,34 @@ inline void kinect::update_skeleton(int& pre_people_num, int* candidate_list, fl
 	for (int32_t i = 0; i < num_bodies; i++) {
 		k4abt_skeleton_t skeleton = frame.get_body(i).skeleton;
 		k4abt_joint_t joint_pelvis = skeleton.joints[0];
-		k4abt_joint_t joint_head = skeleton.joints[26];
+		//k4abt_joint_t joint_head = skeleton.joints[26];
 		k4abt_joint_t joint_neck = skeleton.joints[3];
-		k4abt_joint_t joint_spine_chest = skeleton.joints[2];
+		//k4abt_joint_t joint_spine_chest = skeleton.joints[2];
 		k4abt_joint_t joint_hip_left = skeleton.joints[18];
 		k4abt_joint_t joint_hip_right = skeleton.joints[22];
-		k4abt_joint_t joint_ankle_left = skeleton.joints[20];
-		k4abt_joint_t joint_ankle_right = skeleton.joints[24];
-		k4abt_joint_t joint_shoulder_left = skeleton.joints[5];
-		k4abt_joint_t joint_shoulder_right = skeleton.joints[12];
+		//k4abt_joint_t joint_ankle_left = skeleton.joints[20];
+		//k4abt_joint_t joint_ankle_right = skeleton.joints[24];
+		//k4abt_joint_t joint_shoulder_left = skeleton.joints[5];
+		//k4abt_joint_t joint_shoulder_right = skeletson.joints[12];
 
-		k4a_float3_t point_center;
-		point_center.xyz.x = (joint_ankle_left.position.xyz.x + joint_ankle_right.position.xyz.x) / 2;
-		point_center.xyz.y = (joint_ankle_left.position.xyz.y + joint_ankle_right.position.xyz.y) / 2;
-		point_center.xyz.z = (joint_ankle_left.position.xyz.z + joint_ankle_right.position.xyz.z) / 2;
+		//k4a_float3_t point_center;
+		//point_center.xyz.x = (joint_ankle_left.position.xyz.x + joint_ankle_right.position.xyz.x) / 2;
+		//point_center.xyz.y = (joint_ankle_left.position.xyz.y + joint_ankle_right.position.xyz.y) / 2;
+		//point_center.xyz.z = (joint_ankle_left.position.xyz.z + joint_ankle_right.position.xyz.z) / 2;
 
 
 		float distance_hip = sqrt(pow(joint_hip_left.position.xyz.x - joint_hip_right.position.xyz.x, 2) + pow(joint_hip_left.position.xyz.y - joint_hip_right.position.xyz.y, 2) + pow(joint_hip_left.position.xyz.z - joint_hip_right.position.xyz.z, 2));
-		float distance_neck = sqrt(pow(joint_neck.position.xyz.x - joint_spine_chest.position.xyz.x, 2) + pow(joint_neck.position.xyz.y - joint_spine_chest.position.xyz.y, 2) + pow(joint_neck.position.xyz.z - joint_spine_chest.position.xyz.z, 2));
-		float distance_center = sqrt(pow(point_center.xyz.z, 2));
+		//float distance_neck = sqrt(pow(joint_neck.position.xyz.x - joint_spine_chest.position.xyz.x, 2) + pow(joint_neck.position.xyz.y - joint_spine_chest.position.xyz.y, 2) + pow(joint_neck.position.xyz.z - joint_spine_chest.position.xyz.z, 2));
+		//float distance_center = sqrt(pow(point_center.xyz.z, 2));
 		float distance_pelnis = sqrt(pow(joint_pelvis.position.xyz.x, 2) + pow(joint_pelvis.position.xyz.y, 2) + pow(joint_pelvis.position.xyz.z, 2));
 		float distance_neck_pelnis = sqrt(pow(joint_neck.position.xyz.x - joint_pelvis.position.xyz.x, 2) + pow(joint_neck.position.xyz.y - joint_pelvis.position.xyz.y, 2) + pow(joint_neck.position.xyz.z - joint_pelvis.position.xyz.z, 2));
-		float distance_head_ankle = sqrt(pow(joint_head.position.xyz.x - joint_ankle_right.position.xyz.x, 2) + pow(joint_head.position.xyz.y - joint_ankle_right.position.xyz.y, 2) + pow(joint_head.position.xyz.z - joint_ankle_right.position.xyz.z, 2));
-		float distance_shoulder = sqrt(pow(joint_shoulder_left.position.xyz.x - joint_shoulder_right.position.xyz.x, 2) + pow(joint_shoulder_left.position.xyz.y - joint_shoulder_right.position.xyz.y, 2) + pow(joint_shoulder_left.position.xyz.z - joint_shoulder_right.position.xyz.z, 2));
+		//float distance_head_ankle = sqrt(pow(joint_head.position.xyz.x - joint_ankle_right.position.xyz.x, 2) + pow(joint_head.position.xyz.y - joint_ankle_right.position.xyz.y, 2) + pow(joint_head.position.xyz.z - joint_ankle_right.position.xyz.z, 2));
+		//float distance_shoulder = sqrt(pow(joint_shoulder_left.position.xyz.x - joint_shoulder_right.position.xyz.x, 2) + pow(joint_shoulder_left.position.xyz.y - joint_shoulder_right.position.xyz.y, 2) + pow(joint_shoulder_left.position.xyz.z - joint_shoulder_right.position.xyz.z, 2));
 
 
-		float distance_rate = distance_hip * distance_center;
+		//float distance_rate = distance_hip * distance_center;
 
-		printf_s("id %d: xyz(%f, %f, %f) / distance_rate = %f / distance_hip = %f / distance_z = %f\n", frame.get_body(i).id, skeleton.joints[0].position.xyz.x, skeleton.joints[0].position.xyz.y, skeleton.joints[0].position.xyz.z, distance_rate, distance_neck_pelnis, joint_pelvis.position.xyz.z);
+		printf_s("id %d: xyz(%f, %f, %f) / distance_hip = %f / distance_z = %f\n", frame.get_body(i).id, skeleton.joints[0].position.xyz.x, skeleton.joints[0].position.xyz.y, skeleton.joints[0].position.xyz.z, distance_neck_pelnis, joint_pelvis.position.xyz.z);
 		printf_s("angle: %d\n", (int)(atan2(joint_pelvis.position.xyz.z, joint_pelvis.position.xyz.x) / 3.141592 * 180));
 		bodies.emplace_back(frame.get_body(i));
 
@@ -374,8 +374,6 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 		const bool result_neck = calibration.convert_3d_to_2d(joint_neck.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_neck);
 
 		k4abt_joint_t joint_pelvis = body.skeleton.joints[0];
-		k4a_float2_t position_pelvis;
-		const bool result_pelvis = calibration.convert_3d_to_2d(joint_pelvis.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_pelvis);
 		
 		k4abt_joint_t joint_shoulder_right = body.skeleton.joints[12];
 		k4a_float2_t position_shoulder_right;
@@ -385,26 +383,30 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 		k4a_float2_t position_shoulder_left;
 		const bool result_shoulder_left = calibration.convert_3d_to_2d(joint_shoulder_left.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_shoulder_left);
 
+		k4abt_joint_t joint_hip_left = body.skeleton.joints[18];
+		k4a_float2_t position_hip_left;
+		const bool result_hip_left = calibration.convert_3d_to_2d(joint_hip_left.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_hip_left);
 
 		k4abt_joint_t joint_knee_left = body.skeleton.joints[19];
 		k4a_float2_t position_knee_left;
 		const bool result_knee_left = calibration.convert_3d_to_2d(joint_knee_left.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_knee_left);
 
-		k4abt_joint_t joint_knee_right = body.skeleton.joints[23];
-		k4a_float2_t position_knee_right;
-		const bool result_knee_right = calibration.convert_3d_to_2d(joint_knee_right.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_knee_right);
+		//k4abt_joint_t joint_knee_right = body.skeleton.joints[23];
+		//k4a_float2_t position_knee_right;
+		//const bool result_knee_right = calibration.convert_3d_to_2d(joint_knee_right.position, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_DEPTH, k4a_calibration_type_t::K4A_CALIBRATION_TYPE_COLOR, &position_knee_right);
 
-		k4abt_joint_t joint_ankle_left = body.skeleton.joints[20];
-		k4abt_joint_t joint_ankle_right = body.skeleton.joints[24];
+		//k4abt_joint_t joint_ankle_left = body.skeleton.joints[20];
+		//k4abt_joint_t joint_ankle_right = body.skeleton.joints[24];
 
 		//float distance = sqrt(pow());
-		int width = sqrt(pow(position_shoulder_right.xy.x - position_shoulder_left.xy.x, 2));
+		int shoulder_width = sqrt(pow(position_shoulder_right.xy.x - position_shoulder_left.xy.x, 2));
+		int low_height = sqrt(pow(position_hip_left.xy.y - position_knee_left.xy.x, 2));
 
-		if (width < MIN_BOX_WIDTH)
-			width = MIN_BOX_WIDTH;
+		if (shoulder_width < MIN_BOX_WIDTH)
+			shoulder_width = MIN_BOX_WIDTH;
 
-		const cv::Point point_rect_left_top(static_cast<int>(position_neck.xy.x - width/2), static_cast<int>(position_neck.xy.y));
-		const cv::Point point_rect_right_low(static_cast<int>(position_neck.xy.x + width/2), static_cast<int>(position_knee_left.xy.y));
+		const cv::Point point_rect_left_top(static_cast<int>(position_neck.xy.x - shoulder_width /2), static_cast<int>(position_neck.xy.y));
+		const cv::Point point_rect_right_low(static_cast<int>(position_neck.xy.x + shoulder_width /2), static_cast<int>(position_knee_left.xy.y));
 		
 		/*
 		if (position_shoulder_right.xy.x > position_shoulder_left.xy.x)
@@ -430,11 +432,11 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 
 			// 카메라 중심으로 각도 계산 및 string 형태로 저장
 			int angle = (int)(atan2(joint_pelvis.position.xyz.z, joint_pelvis.position.xyz.x) / 3.141592 * 180);
-			anglesStringData += "[" + to_string(angle) + "]";
+			anglesStringData += to_string(angle);
 
 			//int distance = (joint_ankle_left.position.xyz.z + joint_ankle_right.position.xyz.z) / 2;
 			int distance = joint_pelvis.position.xyz.z;
-			distancesStringData += "[" + to_string(distance) + "]";
+			distancesStringData += to_string(distance);
 
 			// 경계박스 이미지에 그리기
 			//cv::rectangle(color, point_rect_left_top, point_rect_right_low, colors[(body.id - 1) % colors.size()]);
@@ -458,6 +460,10 @@ inline void kinect::show_skeleton(int * candidate_list, SOCKET socket)
 		}
 		*/
 	}
+
+	distancesStringData = "[" + distancesStringData + "]";
+	anglesStringData = "[" + anglesStringData + "]";
+
 	cv::Mat resized_color;
 	cv::cvtColor(color, resized_color, cv::COLOR_BGRA2BGR);
 	cv:resize(resized_color, resized_color, cv::Size(640, 360), 0, 0, cv::INTER_LINEAR);

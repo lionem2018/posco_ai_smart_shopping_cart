@@ -99,9 +99,9 @@ def check_user(img, candidate_num, point_list):
         cropped_image = img[point_left_top[1]:point_right_low[1], point_left_top[0]:point_right_low[0]]
         cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
 
-        # plt.figure()
-        # plt.axis("off")
-        # plt.imshow(cropped_image)
+        plt.figure()
+        plt.axis("off")
+        plt.imshow(cropped_image)
 
         # reshape the image to be a list of pixels
         cropped_image = cropped_image.reshape((cropped_image.shape[0] * cropped_image.shape[1], 3))
@@ -117,7 +117,7 @@ def check_user(img, candidate_num, point_list):
         hist = color_utils.centroid_histogram(clt)
         sorted_hist = np.sort(hist)[::-1]
         sorted_idx = np.argsort(sorted_hist)[::-1]
-        # bar = color_utils.plot_colors(sorted_hist, clt.cluster_centers_)
+        bar = color_utils.plot_colors(sorted_hist, clt.cluster_centers_)
 
         # print(hist)
         # print(sorted_hist)
@@ -182,10 +182,10 @@ def check_user(img, candidate_num, point_list):
             pre_colors = sorted_colors
 
         # show our color bart
-        # plt.figure()
-        # plt.axis("off")
-        # plt.imshow(bar)
-        # plt.show()
+        plt.figure()
+        plt.axis("off")
+        plt.imshow(bar)
+        plt.show()
 
     print("User:", user_id)
 

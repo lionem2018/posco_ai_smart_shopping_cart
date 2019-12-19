@@ -547,4 +547,4 @@ MigrationBackup/
 .ionide/
 
 # personal
-AzureKinect/AzureKinect/dnn_model_2_0.onnx
+tracker_AzureKinect/AzureKinect/dnn_model_2_0.onnx
